@@ -1,6 +1,7 @@
 
 # EGEN - Externalizable interface implementation generator
 
+[ ![Download](https://api.bintray.com/packages/devexperts/Maven/egen/images/download.svg) ](https://bintray.com/devexperts/Maven/egen/_latestVersion)
 
 EGEN -- automatic generator of java.io.Externalizable interface implementation.
 
@@ -30,17 +31,17 @@ If you use maven for build just add EGEN as dependency.
 The tool will process all classes marked with `com.devexperts.egen.processor.annotations.AutoSerializable` annotation and generate appropriate code:
 
 ````java
-	import com.devexperts.egen.processor.annotations.Autoserializable;
+    import com.devexperts.egen.processor.annotations.Autoserializable;
 
-	@AutoSerializable
-	class VeryLargeClass {
-	    private int count;
-	    private String text;
+    @AutoSerializable
+    class VeryLargeClass {
+        private int count;
+        private String text;
 
-	    protected double[] prices;
-	    protected Object cachedDataBaseObject;
-	    ...
-	}
+        protected double[] prices;
+        protected Object cachedDataBaseObject;
+        ...
+    }
 ````
 
 
@@ -123,11 +124,11 @@ Support for nonstandard ordinal types (like enum surrogates appeared before nati
 Coding numeric fields and arrays with usually close values.
 
 ````java
-	int a1;
-	@Delta("a1") int a2; // a2 encoded as writeCompactInt(a2 - a1)
-	@Delta("42") int a3; // a3 encoded as writeCompactInt(a3 - a2)
+    int a1;
+    @Delta("a1") int a2; // a2 encoded as writeCompactInt(a2 - a1)
+    @Delta("42") int a3; // a3 encoded as writeCompactInt(a3 - a2)
 
-	@Delta long[] v; // length and v[0] encoded usual way, following elements as writeCompactLong(v[i]-v[i-1])
+    @Delta long[] v; // length and v[0] encoded usual way, following elements as writeCompactLong(v[i]-v[i-1])
 ````
 **Important!** Generated code requires classes from egen.jar.
 
@@ -149,22 +150,22 @@ Example:
 Given Decimal class with methods `int compose(double)` and `double toDouble(int)` for doubles with limited precision
 
 ````java
-	@AutoSerializationStrategy(targetStrategy=”CompactInt”,
-	    toTarget=”util.Decimal.compose”,
-	    fromTarget=”util.Decimal.toDouble”)
-	@Retention(RetentionPolicy.RUNTIME)
-	@Target(ElementType.FIELD)
-	public @interface Decimal {}
+    @AutoSerializationStrategy(targetStrategy=”CompactInt”,
+        toTarget=”util.Decimal.compose”,
+        fromTarget=”util.Decimal.toDouble”)
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.FIELD)
+    public @interface Decimal {}
 
 ````
 Now we can use it following way:
 
 ```java
-	@AutoSerializable 
-	class C {
-		@Decimal double d;
-		...
-	}
+    @AutoSerializable 
+    class C {
+        @Decimal double d;
+        ...
+    }
 ```
 
 
