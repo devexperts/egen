@@ -1,0 +1,1 @@
+javac -J-Xdebug -J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=8000 -cp ./target/classes -processor com.devexperts.egen.processor.AutoSerializableProcessor ./src/main/java/com/devexperts/egen/processor/sample/ComplicatedClass.java 2> out.txt
