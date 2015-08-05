@@ -45,7 +45,7 @@ The tool will process all classes marked with `com.devexperts.egen.processor.ann
 ````
 
 
-**Important: generated code will use classes from `com.devexperts.io` package of dxlib library which can be found on [dxFeed](http://www.dxfeed.com/) distribution repository:**
+**Important: generated code will use class [IOUtil](http://docs.dxfeed.com/dxlib/api/com/devexperts/io/IOUtil.html) from `com.devexperts.io` package of dxlib library which can be found on [dxFeed](http://www.dxfeed.com/) distribution repository:**
 
 Manual download:
 
