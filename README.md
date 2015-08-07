@@ -126,7 +126,7 @@ Coding numeric fields and arrays with usually close values.
 ````java
     int a1;
     @Delta("a1") int a2; // a2 encoded as writeCompactInt(a2 - a1)
-    @Delta("42") int a3; // a3 encoded as writeCompactInt(a3 - a2)
+    @Delta("a2") int a3; // a3 encoded as writeCompactInt(a3 - a2)
 
     @Delta long[] v; // length and v[0] encoded usual way, following elements as writeCompactLong(v[i]-v[i-1])
 ````
