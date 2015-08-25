@@ -3,6 +3,8 @@
 
 [ ![Download](https://api.bintray.com/packages/devexperts/Maven/egen/images/download.svg) ](https://bintray.com/devexperts/Maven/egen/_latestVersion)
 
+test
+
 EGEN -- automatic generator of java.io.Externalizable interface implementation.
 
 It's aimed to provide efficient custom serialization strategy for dedicated classes without compromising compatibility with
