@@ -13,7 +13,7 @@ package com.devexperts.egen.processor.tools;
  */
 
 import com.sun.tools.javac.code.Flags;
-import com.sun.tools.javac.code.TypeTags;
+import com.sun.tools.javac.code.TypeTag;
 import com.sun.tools.javac.model.JavacElements;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
@@ -41,7 +41,7 @@ public class MethodBlockFactory {
         if (!fieldGroups.isEmpty()) {
             JCExpression flagsInit = maker.Apply(List.<JCExpression>nil(), ident("prepareFlags"), List.<JCExpression>nil());
 
-            JCStatement flagsDef = maker.VarDef(maker.Modifiers(0), utils.getName("flags"), maker.TypeIdent(TypeTags.LONG), flagsInit);
+            JCStatement flagsDef = maker.VarDef(maker.Modifiers(0), utils.getName("flags"), maker.TypeIdent(TypeTag.LONG), flagsInit);
             statements = statements.append(flagsDef);
 
             statements = statements.append(new StatementFactory(maker, utils, (JCVariableDecl) flagsDef).compactWriteStatement());
@@ -64,6 +64,7 @@ public class MethodBlockFactory {
                 if ((var.mods.flags & (Flags.TRANSIENT | Flags.STATIC)) != 0)
                     continue;
 
+                var.mods.flags |= Flags.TRANSIENT; // making all variables transient to reduce class descriptor weight
                 StatementFactory statementFactory = new StatementFactory(maker, utils, var);
                 statements = statements.append(statementFactory.writeStatement());
             }
@@ -83,7 +84,7 @@ public class MethodBlockFactory {
             flagsInit = maker.Select(flagsInit, utils.getName("readCompactLong"));
             flagsInit = maker.Apply(List.<JCExpression>nil(), flagsInit, List.of((JCExpression) ident("in")));
 
-            JCStatement flagsDef = maker.VarDef(maker.Modifiers(0), utils.getName("flags"), maker.TypeIdent(TypeTags.LONG), flagsInit);
+            JCStatement flagsDef = maker.VarDef(maker.Modifiers(0), utils.getName("flags"), maker.TypeIdent(TypeTag.LONG), flagsInit);
             statements = statements.append(flagsDef);
         }
 
@@ -134,8 +135,8 @@ public class MethodBlockFactory {
         JCExpression currentClassTypeToken = makeSelectExpr(classDecl.sym.type.toString() + ".class");
 
         JCExpression selfGetClass = maker.Apply(List.<JCExpression>nil(), makeSelectExpr("self.getClass"), List.<JCExpression>nil());
-        JCExpression sameClassCond = maker.Binary(OpCode.NOT_EQUALS.value, currentClassTypeToken, selfGetClass);
-        JCExpression classCheckCond = maker.Binary(OpCode.BINARY_AND.value, ident("checkClass"), sameClassCond);
+        JCExpression sameClassCond = maker.Binary(Tag.NE, currentClassTypeToken, selfGetClass);
+        JCExpression classCheckCond = maker.Binary(Tag.AND, ident("checkClass"), sameClassCond);
 
         JCStatement throwException = maker.Throw(maker.NewClass(null, List.<JCExpression>nil(),
                 makeSelectExpr("java.lang.UnsupportedOperationException"),
@@ -180,7 +181,7 @@ public class MethodBlockFactory {
     public JCBlock prepareFlagsBlock() {
         List<JCStatement> statements = List.nil();
 
-        JCStatement flagsDef = maker.VarDef(maker.Modifiers(0), utils.getName("flags"), maker.TypeIdent(TypeTags.LONG), maker.Literal(0));
+        JCStatement flagsDef = maker.VarDef(maker.Modifiers(0), utils.getName("flags"), maker.TypeIdent(TypeTag.LONG), maker.Literal(0));
         statements = statements.append(flagsDef);
 
         FieldGrouper fieldGrouper = new FieldGrouper(classDecl);

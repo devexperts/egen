@@ -14,7 +14,7 @@ package com.devexperts.egen.processor;
 
 import com.devexperts.egen.processor.tools.MethodBlockFactory;
 import com.sun.tools.javac.code.Flags;
-import com.sun.tools.javac.code.TypeTags;
+import com.sun.tools.javac.code.TypeTag;
 import com.sun.tools.javac.model.JavacElements;
 import com.sun.tools.javac.processing.JavacProcessingEnvironment;
 import com.sun.tools.javac.tree.JCTree;
@@ -34,7 +34,7 @@ import static com.sun.tools.javac.tree.JCTree.*;
 
 
 @SupportedAnnotationTypes(value = {AutoSerializableProcessor.ANNOTATION_TYPE})
-@SupportedSourceVersion(SourceVersion.RELEASE_7)
+@SupportedSourceVersion(SourceVersion.RELEASE_8)
 @SupportedOptions({"ordinals", "maps", "collections"})
 public class AutoSerializableProcessor extends AbstractProcessor {
     public static final String ANNOTATION_TYPE = "com.devexperts.egen.processor.annotations.AutoSerializable";
@@ -164,7 +164,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
         return maker.MethodDef(
                 methodModifiers,
                 utils.getName("writeContents"),
-                maker.TypeIdent(TypeTags.VOID),
+                maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
                 List.of(maker.VarDef(maker.Modifiers(0), utils.getName("out"), objectOutputClass, null)),
                 List.of(ioExceptionClass),
@@ -177,7 +177,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
         return maker.MethodDef(
                 methodModifiers,
                 utils.getName("readContents"),
-                maker.TypeIdent(TypeTags.VOID),
+                maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
                 List.of(maker.VarDef(maker.Modifiers(0), utils.getName("in"), objectInputClass, null)),
                 List.of(ioExceptionClass, classNotFoundExceptionClass),
@@ -190,7 +190,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
         return maker.MethodDef(
                 methodModifiers,
                 utils.getName("writeObject"),
-                maker.TypeIdent(TypeTags.VOID),
+                maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
                 List.of(maker.VarDef(maker.Modifiers(0), utils.getName("out"), objectOutputClass, null)),
                 List.of(ioExceptionClass),
@@ -203,7 +203,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
         return maker.MethodDef(
                 methodModifiers,
                 utils.getName("readObject"),
-                maker.TypeIdent(TypeTags.VOID),
+                maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
                 List.of(maker.VarDef(maker.Modifiers(0), utils.getName("in"), objectInputClass, null)),
                 List.of(ioExceptionClass, classNotFoundExceptionClass),
@@ -216,12 +216,12 @@ public class AutoSerializableProcessor extends AbstractProcessor {
         return maker.MethodDef(
                 methodModifiers,
                 utils.getName("writeInline"),
-                maker.TypeIdent(TypeTags.VOID),
+                maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
                 List.of(
                         maker.VarDef(maker.Modifiers(0), utils.getName("out"), objectOutputClass, null),
                         maker.VarDef(maker.Modifiers(0), utils.getName("self"), ident(classDecl.name.toString()), null),
-                        maker.VarDef(maker.Modifiers(0), utils.getName("checkClass"), maker.TypeIdent(TypeTags.BOOLEAN), null)
+                        maker.VarDef(maker.Modifiers(0), utils.getName("checkClass"), maker.TypeIdent(TypeTag.BOOLEAN), null)
                 ),
                 List.of(ioExceptionClass),
                 writeInlineBlock,
@@ -233,7 +233,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
         return maker.MethodDef(
                 methodModifiers,
                 utils.getName("readInline"),
-                maker.TypeIdent(TypeTags.VOID),
+                maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
                 List.of(
                         maker.VarDef(maker.Modifiers(0), utils.getName("in"), objectInputClass, null),
@@ -249,7 +249,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
         return maker.MethodDef(
                 maker.Modifiers(Flags.PRIVATE),
                 utils.getName("prepareFlags"),
-                maker.TypeIdent(TypeTags.LONG),
+                maker.TypeIdent(TypeTag.LONG),
                 List.<JCTypeParameter>nil(),
                 List.<JCVariableDecl>nil(),
                 List.<JCExpression>nil(),

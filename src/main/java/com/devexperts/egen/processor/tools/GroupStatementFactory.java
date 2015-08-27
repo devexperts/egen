@@ -54,11 +54,11 @@ public class GroupStatementFactory {
 
     private JCExpression flagsCheckCond(int groupOrdinal) {
         return maker.Binary(
-                OpCode.NOT_EQUALS.value,
+                Tag.NE,
                 maker.Parens(maker.Binary(
-                        OpCode.BITWISE_AND.value,
+                        Tag.BITAND,
                         ident("flags"),
-                        maker.Binary(OpCode.BITWISE_SHIFT_LEFT.value, maker.Literal(1L), maker.Literal(groupOrdinal))
+                        maker.Binary(JCTree.Tag.SL, maker.Literal(1L), maker.Literal(groupOrdinal))
                 )),
                 maker.Literal(0)
         );
@@ -107,16 +107,16 @@ public class GroupStatementFactory {
         int size = vars.size();
         String varName = var.name.toString();
         if (vars.size() == 1) {
-            return maker.Binary(OpCode.NOT_EQUALS.value, ident(varName), varDefaultValue(var));
+            return maker.Binary(Tag.NE, ident(varName), varDefaultValue(var));
         } else {
-            return maker.Binary(OpCode.BINARY_OR.value, groupDefaultCheckCond(vars.subList(0, size - 1)),
+            return maker.Binary(Tag.OR, groupDefaultCheckCond(vars.subList(0, size - 1)),
                     groupDefaultCheckCond(Collections.singletonList(vars.get(size - 1))));
         }
     }
 
     private JCExpression flagAssignExpr(int groupOrdinal) {
-        return maker.Assignop(OpCode.ASSIGN_OR.value, ident("flags"),
-                maker.Binary(OpCode.BITWISE_SHIFT_LEFT.value, maker.Literal(1L), maker.Literal(groupOrdinal)));
+        return maker.Assignop(Tag.BITOR_ASG, ident("flags"),
+                maker.Binary(Tag.SL, maker.Literal(1L), maker.Literal(groupOrdinal)));
     }
 
     private JCExpression varDefaultValue(JCVariableDecl var) {
