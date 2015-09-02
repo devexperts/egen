@@ -26,8 +26,9 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
-import java.io.FileNotFoundException;
 import java.io.PrintWriter;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Set;
 
 import static com.sun.tools.javac.tree.JCTree.*;
@@ -38,6 +39,7 @@ import static com.sun.tools.javac.tree.JCTree.*;
 @SupportedOptions({"ordinals", "maps", "collections"})
 public class AutoSerializableProcessor extends AbstractProcessor {
     public static final String ANNOTATION_TYPE = "com.devexperts.egen.processor.annotations.AutoSerializable";
+    private static final HashSet<String> VAR_ANNOTATION_LIST = new HashSet<>(Arrays.asList("Compact", "Delta", "Inline", "Ordinal", "PresenceBit"));
     private JavacProcessingEnvironment javacProcessingEnv;
     private TreeMaker maker;
 
@@ -72,70 +74,84 @@ public class AutoSerializableProcessor extends AbstractProcessor {
             PrintWriter logPw = null; // TODO: sane logging
             try {
                 logPw = new PrintWriter("egen_output.txt");
-            } catch (FileNotFoundException ignored) {
-            }
-            for (final Element e : classes) {
-                JCTree classNode = utils.getTree(e);
 
-                classDecl = (JCClassDecl) classNode;
-                filterClass(classDecl);
+                for (final Element e : classes) {
+                    JCTree classNode = utils.getTree(e);
 
-                JCExpression serializableInterface = makeSelectExpr("java.io.Serializable");
-                JCExpression ioExceptionClass = makeSelectExpr("java.io.IOException");
-                JCExpression classNotFoundExceptionClass = makeSelectExpr("java.lang.ClassNotFoundException");
-                JCExpression objectOutputClass = makeSelectExpr("java.io.ObjectOutputStream");
-                JCExpression objectInputClass = makeSelectExpr("java.io.ObjectInputStream");
+                    classDecl = (JCClassDecl) classNode;
+                    filterClass(classDecl);
 
-                classDecl.implementing = classDecl.implementing.append(serializableInterface);
+                    /* This a dirty hack: for unknown reason, compiler's
+                    com.sun.tools.javac.comp.Flow.AssignAnalyzer.visitMethodDef() internal check fails without this.
+                    Intervening in the unsupported API sometimes hurts. */
+                    maker.pos = Math.max(maker.pos, classDecl.getModifiers().getStartPosition());
 
-                JCModifiers publicModifiers = maker.Modifiers(Flags.PUBLIC, List.<JCAnnotation>nil());
-                JCModifiers privateModifiers = maker.Modifiers(Flags.PRIVATE, List.<JCAnnotation>nil());
-                JCModifiers publicStaticModifiers = maker.Modifiers(Flags.PUBLIC | Flags.STATIC, List.<JCAnnotation>nil());
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE, "EGEN: Class " + classDecl.name +
+                            " custom serialization protocol is being automatically implemented.");
 
-                MethodBlockFactory methodBlockFactory = new MethodBlockFactory(maker, utils, classDecl);
-
-                JCBlock writeContentsBlock = methodBlockFactory.writeContentsBlock();
-                JCMethodDecl writeContentsMethod = getWriteContentsMethod(utils, ioExceptionClass,
-                        publicModifiers, objectOutputClass, writeContentsBlock);
-
-                JCBlock readContentsBlock = methodBlockFactory.readContentsBlock();
-                JCMethodDecl readContentsMethod = getReadContentsMethod(utils, ioExceptionClass, classNotFoundExceptionClass, publicModifiers, objectInputClass, readContentsBlock);
-
-                JCBlock writeObjectBlock = methodBlockFactory.writeObjectBlock();
-                JCMethodDecl writeObjectMethod = getWriteObjectMethod(utils, ioExceptionClass, privateModifiers,
-                        objectOutputClass, writeObjectBlock);
-
-                JCBlock readObjectBlock = methodBlockFactory.readObjectBlock();
-                JCMethodDecl readObjectMethod = getReadObjectMethod(utils, ioExceptionClass, classNotFoundExceptionClass,
-                        privateModifiers, objectInputClass, readObjectBlock);
-
-                JCBlock writeInlineBlock = methodBlockFactory.writeInlineBlock();
-                JCMethodDecl writeInlineMethod = getWriteInlineMethod(utils, ioExceptionClass, publicStaticModifiers,
-                        objectOutputClass, writeInlineBlock);
-
-                JCBlock readInlineBlock = methodBlockFactory.readInlineBlock();
-                JCMethodDecl readInlineMethod = getReadInlineMethod(utils, ioExceptionClass, classNotFoundExceptionClass,
-                        publicStaticModifiers, objectInputClass, readInlineBlock);
-
-                JCBlock prepareFlagsBlock = methodBlockFactory.prepareFlagsBlock();
-                JCMethodDecl prepareFlagsMethod = getPrepareFlagsMethod(utils, prepareFlagsBlock);
-
-                classDecl.defs = classDecl.defs.append(writeContentsMethod);
-                classDecl.defs = classDecl.defs.append(writeObjectMethod);
-                classDecl.defs = classDecl.defs.append(writeInlineMethod);
-
-                classDecl.defs = classDecl.defs.append(readContentsMethod);
-                classDecl.defs = classDecl.defs.append(readObjectMethod);
-                classDecl.defs = classDecl.defs.append(readInlineMethod);
-
-                classDecl.defs = classDecl.defs.append(prepareFlagsMethod);
-
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE, "EGEN: Class " + classDecl.name +
-                        " custom serialization protocol is being automatically implemented.");
-
-                if (logPw != null) {
                     logPw.println("EGEN: Class " + classDecl.name +
-                            " custom serialization protocol is being automatically implemented.\n" + classDecl.toString());
+                            " custom serialization protocol is being automatically implemented.");
+
+                    JCExpression ioExceptionClass = makeSelectExpr("java.io.IOException");
+                    JCExpression classNotFoundExceptionClass = makeSelectExpr("java.lang.ClassNotFoundException");
+                    JCExpression objectOutputClass = makeSelectExpr("java.io.ObjectOutputStream");
+                    JCExpression objectInputClass = makeSelectExpr("java.io.ObjectInputStream");
+
+                    classDecl.implementing = classDecl.implementing.append(makeSelectExpr("java.io.Serializable"));
+
+                    JCModifiers publicModifiers = maker.Modifiers(Flags.PUBLIC , List.<JCAnnotation>nil());
+                    JCModifiers privateModifiers = maker.Modifiers(Flags.PRIVATE , List.<JCAnnotation>nil());
+                    JCModifiers publicStaticModifiers = maker.Modifiers(Flags.PUBLIC | Flags.STATIC, List.<JCAnnotation>nil());
+
+                    MethodBlockFactory methodBlockFactory = new MethodBlockFactory(maker, utils, classDecl);
+
+                    JCBlock writeContentsBlock = methodBlockFactory.writeContentsBlock();
+                    JCMethodDecl writeContentsMethod = getWriteContentsMethod(utils, ioExceptionClass,
+                            publicModifiers, objectOutputClass, writeContentsBlock);
+
+                    JCBlock readContentsBlock = methodBlockFactory.readContentsBlock();
+                    JCMethodDecl readContentsMethod = getReadContentsMethod(utils, ioExceptionClass, classNotFoundExceptionClass, publicModifiers, objectInputClass, readContentsBlock);
+
+                    JCBlock writeObjectBlock = methodBlockFactory.writeObjectBlock();
+                    JCMethodDecl writeObjectMethod = getWriteObjectMethod(utils, ioExceptionClass, privateModifiers,
+                            objectOutputClass, writeObjectBlock);
+
+                    JCBlock readObjectBlock = methodBlockFactory.readObjectBlock();
+                    JCMethodDecl readObjectMethod = getReadObjectMethod(utils, ioExceptionClass, classNotFoundExceptionClass,
+                            privateModifiers, objectInputClass, readObjectBlock);
+
+                    JCBlock writeInlineBlock = methodBlockFactory.writeInlineBlock();
+                    JCMethodDecl writeInlineMethod = getWriteInlineMethod(utils, ioExceptionClass, publicStaticModifiers,
+                            objectOutputClass, writeInlineBlock);
+
+                    JCBlock readInlineBlock = methodBlockFactory.readInlineBlock();
+                    JCMethodDecl readInlineMethod = getReadInlineMethod(utils, ioExceptionClass, classNotFoundExceptionClass,
+                            publicStaticModifiers, objectInputClass, readInlineBlock);
+
+                    JCBlock prepareFlagsBlock = methodBlockFactory.prepareFlagsBlock();
+                    JCMethodDecl prepareFlagsMethod = getPrepareFlagsMethod(utils, prepareFlagsBlock);
+
+                    classDecl.defs = classDecl.defs.append(writeContentsMethod);
+                    classDecl.defs = classDecl.defs.append(writeObjectMethod);
+                    classDecl.defs = classDecl.defs.append(writeInlineMethod);
+
+                    classDecl.defs = classDecl.defs.append(readContentsMethod);
+                    classDecl.defs = classDecl.defs.append(readObjectMethod);
+                    classDecl.defs = classDecl.defs.append(readInlineMethod);
+
+                    classDecl.defs = classDecl.defs.append(prepareFlagsMethod);
+
+                    makeAllFieldsTransient(classDecl);
+                    logPw.println("EGEN: Class " + classDecl.name + " - success.\n" + classDecl.toString());
+                }
+            } catch (Throwable t) {
+                if (logPw != null) {
+                    logPw.println("EGEN: Processing of " + classDecl.name + " resulted an exception:");
+                    logPw.println(t);
+                    t.printStackTrace(logPw);
+                }
+            } finally {
+                if (logPw != null) {
                     logPw.flush();
                 }
             }
@@ -166,7 +182,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 utils.getName("writeContents"),
                 maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
-                List.of(maker.VarDef(maker.Modifiers(0), utils.getName("out"), objectOutputClass, null)),
+                List.of(maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("out"), objectOutputClass, null)),
                 List.of(ioExceptionClass),
                 writeContentsBlock,
                 null
@@ -179,7 +195,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 utils.getName("readContents"),
                 maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
-                List.of(maker.VarDef(maker.Modifiers(0), utils.getName("in"), objectInputClass, null)),
+                List.of(maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("in"), objectInputClass, null)),
                 List.of(ioExceptionClass, classNotFoundExceptionClass),
                 readContentsBlock,
                 null
@@ -192,7 +208,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 utils.getName("writeObject"),
                 maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
-                List.of(maker.VarDef(maker.Modifiers(0), utils.getName("out"), objectOutputClass, null)),
+                List.of(maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("out"), objectOutputClass, null)),
                 List.of(ioExceptionClass),
                 writeObjectBlock,
                 null
@@ -205,7 +221,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 utils.getName("readObject"),
                 maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
-                List.of(maker.VarDef(maker.Modifiers(0), utils.getName("in"), objectInputClass, null)),
+                List.of(maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("in"), objectInputClass, null)),
                 List.of(ioExceptionClass, classNotFoundExceptionClass),
                 readObjectBlock,
                 null
@@ -219,9 +235,9 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
                 List.of(
-                        maker.VarDef(maker.Modifiers(0), utils.getName("out"), objectOutputClass, null),
-                        maker.VarDef(maker.Modifiers(0), utils.getName("self"), ident(classDecl.name.toString()), null),
-                        maker.VarDef(maker.Modifiers(0), utils.getName("checkClass"), maker.TypeIdent(TypeTag.BOOLEAN), null)
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("out"), objectOutputClass, null),
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("self"), ident(classDecl.name.toString()), null),
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("checkClass"), maker.TypeIdent(TypeTag.BOOLEAN), null)
                 ),
                 List.of(ioExceptionClass),
                 writeInlineBlock,
@@ -236,8 +252,8 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
                 List.of(
-                        maker.VarDef(maker.Modifiers(0), utils.getName("in"), objectInputClass, null),
-                        maker.VarDef(maker.Modifiers(0), utils.getName("self"), makeSelectExpr(classDecl.name.toString()), null)
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("in"), objectInputClass, null),
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("self"), makeSelectExpr(classDecl.name.toString()), null)
                 ),
                 List.of(ioExceptionClass, classNotFoundExceptionClass),
                 readInlineBlock,
@@ -287,6 +303,28 @@ public class AutoSerializableProcessor extends AbstractProcessor {
         return collections;
     }
 
+    /**
+     * @return EGEN-related annotation expression (or null, if var is not annotated)
+     */
+    public static JCAnnotation getEgenAnnotation(JCVariableDecl var) {
+        for (JCAnnotation annotation : var.mods.annotations) {
+            if (VAR_ANNOTATION_LIST.contains(annotation.getAnnotationType().toString()))
+                return annotation;
+        }
+        return null;
+    }
+
+    /**
+     * @return string representation of EGEN-related annotation (or "", if var is not annotated)
+     */
+    public static String getEgenAnnotationType(JCVariableDecl var) {
+        for (JCAnnotation annotation : var.mods.annotations) {
+            if (VAR_ANNOTATION_LIST.contains(annotation.getAnnotationType().toString()))
+                return annotation.annotationType.toString();
+        }
+        return "";
+    }
+
     private static void filterClass(JCClassDecl classDecl) {
         List<JCExpression> newImplementing = List.nil();
         for (JCExpression expr : classDecl.implementing) {
@@ -294,18 +332,15 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 newImplementing = newImplementing.append(expr);
         }
         classDecl.implementing = newImplementing;
+    }
 
-//        List<JCTree> newDefs = List.nil();
-//        for (JCTree tree : classDecl.defs) {
-//            if (tree instanceof JCMethodDecl) {
-//                JCMethodDecl methodDecl = (JCMethodDecl) tree;
-//                if (!methodDecl.name.toString().equals("readExternal") && !methodDecl.name.toString().equals("writeExternal"))
-//                    newDefs = newDefs.append(tree);
-//            } else {
-//                newDefs = newDefs.append(tree);
-//            }
-//
-//        }
-//        classDecl.defs = newDefs;
+    /**
+     * Info about fields is redundant in the class descriptor if custom serialization methods are present.
+     */
+    private static void makeAllFieldsTransient(JCClassDecl classDecl) {
+        for (JCTree tree : classDecl.defs) {
+            if (tree instanceof JCVariableDecl)
+                ((JCVariableDecl) tree).mods.flags |= Flags.TRANSIENT;
+        }
     }
 }

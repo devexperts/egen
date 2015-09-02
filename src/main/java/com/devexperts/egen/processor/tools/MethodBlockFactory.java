@@ -12,6 +12,7 @@ package com.devexperts.egen.processor.tools;
  * #L%
  */
 
+import com.devexperts.egen.processor.AutoSerializableProcessor;
 import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.TypeTag;
 import com.sun.tools.javac.model.JavacElements;
@@ -56,15 +57,12 @@ public class MethodBlockFactory {
         for (JCTree tree : classDecl.defs) {
             if (tree instanceof JCTree.JCVariableDecl) {
                 JCTree.JCVariableDecl var = (JCTree.JCVariableDecl) tree;
-                if (!var.mods.annotations.isEmpty() &&
-                        "PresenceBit".equals(var.mods.annotations.get(0).annotationType.toString())) {
+                if (FieldGrouper.PRESENCE.equals(AutoSerializableProcessor.getEgenAnnotationType(var)))
                     continue;
-                }
 
                 if ((var.mods.flags & (Flags.TRANSIENT | Flags.STATIC)) != 0)
                     continue;
 
-                var.mods.flags |= Flags.TRANSIENT; // making all variables transient to reduce class descriptor weight
                 StatementFactory statementFactory = new StatementFactory(maker, utils, var);
                 statements = statements.append(statementFactory.writeStatement());
             }
@@ -96,10 +94,8 @@ public class MethodBlockFactory {
         for (JCTree tree : classDecl.defs) {
             if (tree instanceof JCTree.JCVariableDecl) {
                 JCTree.JCVariableDecl var = (JCTree.JCVariableDecl) tree;
-                if (!var.mods.annotations.isEmpty() &&
-                        "PresenceBit".equals(var.mods.annotations.get(0).annotationType.toString())) {
+                if (FieldGrouper.PRESENCE.equals(AutoSerializableProcessor.getEgenAnnotationType(var)))
                     continue;
-                }
 
                 if ((var.mods.flags & (Flags.TRANSIENT | Flags.STATIC)) != 0)
                     continue;

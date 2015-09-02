@@ -12,6 +12,7 @@ package com.devexperts.egen.processor.tools;
  * #L%
  */
 
+import com.devexperts.egen.processor.AutoSerializableProcessor;
 import com.sun.tools.javac.model.JavacElements;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
@@ -130,7 +131,11 @@ public class GroupStatementFactory {
         resultExpr = maker.Select(resultExpr, utils.getName("valueOf"));
 
         String value = "0";
-        for (JCExpression expression : var.mods.annotations.get(0).args) {
+        JCAnnotation annotation = AutoSerializableProcessor.getEgenAnnotation(var);
+        if (annotation == null)
+            throw new IllegalStateException("EGEN annotation not found");
+
+        for (JCExpression expression : annotation.args) {
             JCAssign assign = (JCAssign)expression;
             if ("value".equals(assign.lhs.toString())) {
                 value = assign.rhs.toString().substring(1, assign.rhs.toString().length() - 1);

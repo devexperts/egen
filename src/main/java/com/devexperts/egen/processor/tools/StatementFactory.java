@@ -35,11 +35,7 @@ public class StatementFactory {
     }
 
     public JCStatement writeStatement() {
-        String annotationType = "";
-        if (!var.mods.annotations.isEmpty()) {
-            annotationType = var.mods.annotations.get(0).annotationType.toString();
-        }
-
+        String annotationType = AutoSerializableProcessor.getEgenAnnotationType(var);
         switch (annotationType) {
             case "Compact":
                 return compactWriteStatement();
@@ -60,10 +56,7 @@ public class StatementFactory {
     }
 
     public JCStatement readStatement() {
-        String annotationType = "";
-        if (!var.mods.annotations.isEmpty()) {
-            annotationType = var.mods.annotations.get(0).annotationType.toString();
-        }
+        String annotationType = AutoSerializableProcessor.getEgenAnnotationType(var);
         switch (annotationType) {
             case "Compact":
                 return compactReadStatement();
@@ -609,7 +602,11 @@ public class StatementFactory {
         resultExpr = maker.Select(resultExpr, utils.getName("valueOf"));
 
         String value = "0";
-        for (JCExpression expression : var.mods.annotations.get(0).args) {
+        JCAnnotation annotation = AutoSerializableProcessor.getEgenAnnotation(var);
+        if (annotation == null)
+            throw new IllegalStateException("EGEN annotation not found");
+
+        for (JCExpression expression : annotation.args) {
             JCAssign assign = (JCAssign) expression;
             if ("value".equals(assign.lhs.toString())) {
                 value = assign.rhs.toString().substring(1, assign.rhs.toString().length() - 1);
@@ -645,35 +642,38 @@ public class StatementFactory {
         private SerializationStrategyRecord() {}
 
         public static SerializationStrategyRecord getByVariable(JCVariableDecl var) {
-            try {
-                List<Attribute.Compound> annotationAttributes = var.mods.annotations.get(0).type.tsym.getMetadata().getDeclarationAttributes();
-                Attribute.Compound strategyCompound = null;
-                for (Attribute.Compound ac : annotationAttributes) {
-                    if (ac.type.toString().endsWith("AutoSerializationStrategy")) {
-                        strategyCompound = ac;
-                    }
-                }
 
-                if (strategyCompound == null)
-                    return null;
-
-                SerializationStrategyRecord result = new SerializationStrategyRecord();
-                for (Pair<com.sun.tools.javac.code.Symbol.MethodSymbol, Attribute> pair : strategyCompound.values) {
-                    String annotationArgument = pair.fst.toString();
-                    if (annotationArgument.startsWith("targetStrategy")) {
-                        result.targetStrategy = ((Attribute.Constant)pair.snd).value.toString();
-                    } else if (annotationArgument.startsWith("toTarget")) {
-                        result.toTarget = ((Attribute.Constant)pair.snd).value.toString();
-                    } else if (annotationArgument.startsWith("fromTarget")) {
-                        result.fromTarget = ((Attribute.Constant)pair.snd).value.toString();
+            for (JCAnnotation annotation : var.mods.annotations) {
+                try {
+                    List<Attribute.Compound> annotationAttributes = annotation.type.tsym.getMetadata().getDeclarationAttributes();
+                    Attribute.Compound strategyCompound = null;
+                    for (Attribute.Compound ac : annotationAttributes) {
+                        if (ac.type.toString().endsWith("AutoSerializationStrategy")) {
+                            strategyCompound = ac;
+                        }
                     }
+
+                    if (strategyCompound == null)
+                        continue;
+
+                    SerializationStrategyRecord result = new SerializationStrategyRecord();
+                    for (Pair<com.sun.tools.javac.code.Symbol.MethodSymbol, Attribute> pair : strategyCompound.values) {
+                        String annotationArgument = pair.fst.toString();
+                        if (annotationArgument.startsWith("targetStrategy")) {
+                            result.targetStrategy = ((Attribute.Constant) pair.snd).value.toString();
+                        } else if (annotationArgument.startsWith("toTarget")) {
+                            result.toTarget = ((Attribute.Constant) pair.snd).value.toString();
+                        } else if (annotationArgument.startsWith("fromTarget")) {
+                            result.fromTarget = ((Attribute.Constant) pair.snd).value.toString();
+                        }
+                    }
+                    return result;
+                } catch (NullPointerException | ClassCastException | IndexOutOfBoundsException ignored) {
                 }
-                return result;
-            } catch (NullPointerException | ClassCastException | IndexOutOfBoundsException e) {
-                return null;
             }
-        }
 
+            return null;
+        }
     }
 
 }

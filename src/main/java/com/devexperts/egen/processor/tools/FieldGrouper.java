@@ -12,6 +12,7 @@ package com.devexperts.egen.processor.tools;
  * #L%
  */
 
+import com.devexperts.egen.processor.AutoSerializableProcessor;
 import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.tree.JCTree;
 
@@ -21,11 +22,12 @@ import java.util.List;
 import java.util.Map;
 
 public class FieldGrouper {
+    public static final String PRESENCE = "PresenceBit";
+
     private static final int ERROR = -2;
     private static final int SINGLETON_GROUP = -1;
-
-    private static final String PRESENCE = "PresenceBit";
     private static final String VALUE = "value";
+
     JCTree.JCClassDecl classDecl;
 
     public FieldGrouper(JCTree.JCClassDecl classDecl) {
@@ -38,12 +40,12 @@ public class FieldGrouper {
         for (JCTree tree : classDecl.defs) {
             if (tree instanceof JCTree.JCVariableDecl) {
                 JCTree.JCVariableDecl var = (JCTree.JCVariableDecl)tree;
-                if (var.mods.annotations.size() == 1 &&
-                        var.mods.annotations.get(0).annotationType.toString().equals(PRESENCE)) {
+                JCTree.JCAnnotation annotation = AutoSerializableProcessor.getEgenAnnotation(var);
+                if (annotation != null && PRESENCE.equals(annotation.annotationType.toString())) {
                     if ((var.mods.flags & (Flags.TRANSIENT | Flags.STATIC)) != 0)
                         continue;
 
-                    List<JCTree.JCExpression> arguments = var.mods.annotations.get(0).getArguments();
+                    List<JCTree.JCExpression> arguments = annotation.getArguments();
                     int groupId = ERROR;
                     if (arguments.size() == 1 && arguments.get(0).toString().startsWith(VALUE)) {
                         groupId = SINGLETON_GROUP;
@@ -56,7 +58,7 @@ public class FieldGrouper {
                     }
                     // TODO: Annotation args usage is hardcoded, needs to be refactored
 
-                    if (groupId != -2 && groupIdMap.get(groupId) == null)
+                    if (groupId != ERROR && groupIdMap.get(groupId) == null)
                         groupIdMap.put(groupId, new ArrayList<JCTree.JCVariableDecl>());
 
                     groupIdMap.get(groupId).add(var);
