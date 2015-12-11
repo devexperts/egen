@@ -4,7 +4,7 @@
 
     <groupId>com.devexperts</groupId>
     <artifactId>egen</artifactId>
-    <version>2.0.1-SNAPSHOT</version>
+    <version>2.0.1</version>
     <name>EGEN - Externalizable implementation generator</name>
 
     <licenses>
@@ -226,7 +226,7 @@
     <scm>
         <connection>scm:git:https://github.com/Devexperts/egen.git</connection>
         <developerConnection>scm:git:git@github.com:Devexperts/egen.git</developerConnection>
-        <tag>HEAD</tag>
+        <tag>egen-2.0.1</tag>
     </scm>
 
     <distributionManagement>
