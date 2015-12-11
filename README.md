@@ -1,23 +1,24 @@
 
-# EGEN - Externalizable interface implementation generator
+# EGEN - Tool for compile-time optimization of Java classes serialization
 
 [ ![Download](https://api.bintray.com/packages/devexperts/Maven/egen/images/download.svg) ](https://bintray.com/devexperts/Maven/egen/_latestVersion)
-
-EGEN -- automatic generator of java.io.Externalizable interface implementation.
 
 It's aimed to provide efficient custom serialization strategy for dedicated classes without compromising compatibility with
 default java serialization approach and writing serialization code by hand.
 
+
 Java serialization API provides following interface for custom serialization:
 
 ````java
-    void writeExternal(ObjectOutput out) throws IOException;
+    void writeObject(ObjectOutputStream out) throws IOException;
 
-    void readExternal(ObjectInput in) throws IOException, ClassNotFoundException;
+    void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException;
 ````
 
 The tool is implemented as annotation processor invoked by javac during compilation. It analyzes classes marked with
-`@AutoSerializable` annotation and generates methods of Externalizable interface on the fly.
+`@AutoSerializable` annotation and generates methods on the fly.
+
+EGEN stands for Externalizable GENerator, but actually it generates only writeObject()/readObject() methods. We have refused of implementing java.io.Externalizable interface due to inheritance issues. 
 
 
 ## Usage

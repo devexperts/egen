@@ -589,8 +589,13 @@ public class StatementFactory {
                 "double".equals(typeName);
     }
 
-    private JCIdent ident(String name) {
-        return maker.Ident(utils.getName(name));
+    private JCExpression ident(String complexIdent) {
+        String[] parts = complexIdent.split("\\.");
+        JCExpression expression = maker.Ident(utils.getName(parts[0]));
+        for (int i = 1; i < parts.length; i++) {
+            expression = maker.Select(expression, utils.getName(parts[i]));
+        }
+        return expression;
     }
 
     private JCExpression varDeltaFrom(JCVariableDecl var) {

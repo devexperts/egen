@@ -1,6 +1,10 @@
 
 # CHANGELOG
 
+## 2.0.1 - 2015-12-04
+
+- FIX: @Ordinal causes compile error if marked field is of nested class
+
 ## 2.0.0 - 2015-09-02
 
 - NEW: Java 8 support
