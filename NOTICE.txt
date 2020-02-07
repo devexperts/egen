@@ -1,5 +1,5 @@
 Egen - Externalizable implementation generator
-Copyright (C) 2014-2015 Devexperts LLC
+Copyright (C) 2014-2020 Devexperts LLC
 
 This product is developed at Devexperts LLC (http://devexperts.com/).
 Licensed under the Mozilla Public License, Version 2.

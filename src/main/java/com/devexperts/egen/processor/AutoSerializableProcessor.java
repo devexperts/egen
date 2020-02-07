@@ -4,7 +4,7 @@ package com.devexperts.egen.processor;
  * #%L
  * EGEN - Externalizable implementation generator
  * %%
- * Copyright (C) 2014 - 2015 Devexperts, LLC
+ * Copyright (C) 2014 - 2020 Devexperts, LLC
  * %%
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -27,6 +27,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 import java.io.PrintWriter;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -53,7 +54,11 @@ public class AutoSerializableProcessor extends AbstractProcessor {
     @Override
     public void init(ProcessingEnvironment procEnv) {
         super.init(procEnv);
-        this.javacProcessingEnv = (JavacProcessingEnvironment) procEnv;
+        // in incremental mode gradle would pass us a wrapped instance
+        boolean isIncrementalCompilation = !(procEnv instanceof JavacProcessingEnvironment);
+        processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE, "EGEN: isIncrementalCompilation=" + isIncrementalCompilation);
+
+        this.javacProcessingEnv = getJavacProcessingEnvironment(procEnv);
         this.maker = TreeMaker.instance(javacProcessingEnv.getContext());
     }
 
@@ -99,7 +104,6 @@ public class AutoSerializableProcessor extends AbstractProcessor {
 
                     classDecl.implementing = classDecl.implementing.append(makeSelectExpr("java.io.Serializable"));
 
-                    JCModifiers publicModifiers = maker.Modifiers(Flags.PUBLIC , List.<JCAnnotation>nil());
                     JCModifiers privateModifiers = maker.Modifiers(Flags.PRIVATE , List.<JCAnnotation>nil());
                     JCModifiers publicStaticModifiers = maker.Modifiers(Flags.PUBLIC | Flags.STATIC, List.<JCAnnotation>nil());
 
@@ -107,10 +111,11 @@ public class AutoSerializableProcessor extends AbstractProcessor {
 
                     JCBlock writeContentsBlock = methodBlockFactory.writeContentsBlock();
                     JCMethodDecl writeContentsMethod = getWriteContentsMethod(utils, ioExceptionClass,
-                            publicModifiers, objectOutputClass, writeContentsBlock);
+                            publicStaticModifiers, objectOutputClass, writeContentsBlock);
 
                     JCBlock readContentsBlock = methodBlockFactory.readContentsBlock();
-                    JCMethodDecl readContentsMethod = getReadContentsMethod(utils, ioExceptionClass, classNotFoundExceptionClass, publicModifiers, objectInputClass, readContentsBlock);
+                    JCMethodDecl readContentsMethod = getReadContentsMethod(utils, ioExceptionClass,
+                            classNotFoundExceptionClass, publicStaticModifiers, objectInputClass, readContentsBlock);
 
                     JCBlock writeObjectBlock = methodBlockFactory.writeObjectBlock();
                     JCMethodDecl writeObjectMethod = getWriteObjectMethod(utils, ioExceptionClass, privateModifiers,
@@ -182,7 +187,10 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 utils.getName("writeContents"),
                 maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
-                List.of(maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("out"), objectOutputClass, null)),
+                List.of(
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("out"), objectOutputClass, null),
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("self"), makeSelectExpr(classDecl.sym.type.toString()), null)
+                ),
                 List.of(ioExceptionClass),
                 writeContentsBlock,
                 null
@@ -195,7 +203,10 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 utils.getName("readContents"),
                 maker.TypeIdent(TypeTag.VOID),
                 List.<JCTypeParameter>nil(),
-                List.of(maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("in"), objectInputClass, null)),
+                List.of(
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("in"), objectInputClass, null),
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("self"), makeSelectExpr(classDecl.sym.type.toString()), null)
+                ),
                 List.of(ioExceptionClass, classNotFoundExceptionClass),
                 readContentsBlock,
                 null
@@ -236,7 +247,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 List.<JCTypeParameter>nil(),
                 List.of(
                         maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("out"), objectOutputClass, null),
-                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("self"), ident(classDecl.name.toString()), null),
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("self"), makeSelectExpr(classDecl.sym.type.toString()), null),
                         maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("checkClass"), maker.TypeIdent(TypeTag.BOOLEAN), null)
                 ),
                 List.of(ioExceptionClass),
@@ -253,7 +264,7 @@ public class AutoSerializableProcessor extends AbstractProcessor {
                 List.<JCTypeParameter>nil(),
                 List.of(
                         maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("in"), objectInputClass, null),
-                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("self"), makeSelectExpr(classDecl.name.toString()), null)
+                        maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("self"), makeSelectExpr(classDecl.sym.type.toString()), null)
                 ),
                 List.of(ioExceptionClass, classNotFoundExceptionClass),
                 readInlineBlock,
@@ -263,11 +274,11 @@ public class AutoSerializableProcessor extends AbstractProcessor {
 
     private JCMethodDecl getPrepareFlagsMethod(JavacElements utils, JCBlock prepareFlagsBlock) {
         return maker.MethodDef(
-                maker.Modifiers(Flags.PRIVATE),
+                maker.Modifiers(Flags.PRIVATE | Flags.STATIC),
                 utils.getName("prepareFlags"),
                 maker.TypeIdent(TypeTag.LONG),
                 List.<JCTypeParameter>nil(),
-                List.<JCVariableDecl>nil(),
+                List.of(maker.VarDef(maker.Modifiers(Flags.PARAMETER), utils.getName("self"), makeSelectExpr(classDecl.sym.type.toString()), null)),
                 List.<JCExpression>nil(),
                 prepareFlagsBlock,
                 null
@@ -342,5 +353,27 @@ public class AutoSerializableProcessor extends AbstractProcessor {
             if (tree instanceof JCVariableDecl)
                 ((JCVariableDecl) tree).mods.flags |= Flags.TRANSIENT;
         }
+    }
+
+    /**
+     * This class casts the given processing environment to a JavacProcessingEnvironment. In case of
+     * gradle incremental compilation, the delegate ProcessingEnvironment of the gradle wrapper is returned.
+     */
+    private static JavacProcessingEnvironment getJavacProcessingEnvironment(ProcessingEnvironment procEnv) {
+        final Class<?> procEnvClass = procEnv.getClass();
+        if (procEnv.getClass().getName().equals("org.gradle.api.internal.tasks.compile.processing.IncrementalProcessingEnvironment")) {
+            try {
+                Field field = procEnvClass.getDeclaredField("delegate");
+                field.setAccessible(true);
+                Object delegate = field.get(procEnv);
+                return getJavacProcessingEnvironment((ProcessingEnvironment) delegate);
+            } catch (Exception e) {
+                e.printStackTrace();
+                procEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                        "Can't get the delegate of the gradle IncrementalProcessingEnvironment.");
+                throw new IllegalStateException(e);
+            }
+        }
+        return (JavacProcessingEnvironment) procEnv;
     }
 }

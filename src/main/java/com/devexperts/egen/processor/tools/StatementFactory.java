@@ -4,7 +4,7 @@ package com.devexperts.egen.processor.tools;
  * #%L
  * EGEN - Externalizable implementation generator
  * %%
- * Copyright (C) 2014 - 2015 Devexperts, LLC
+ * Copyright (C) 2014 - 2020 Devexperts, LLC
  * %%
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -26,16 +26,22 @@ import static com.sun.tools.javac.tree.JCTree.*;
 public class StatementFactory {
     TreeMaker maker;
     JavacElements utils;
-    JCVariableDecl var;
+    JCVariableDecl variableDecl;
+    JCExpression var;
 
     public StatementFactory(TreeMaker maker, JavacElements utils, JCVariableDecl var) {
+        this(maker, utils, var, false);
+    }
+
+    public StatementFactory(TreeMaker maker, JavacElements utils, JCVariableDecl var, boolean isLocalVar) {
         this.maker = maker;
         this.utils = utils;
-        this.var = var;
+        this.variableDecl = var;
+        this.var = ident((isLocalVar ? "" : "self.") + var.getName().toString());
     }
 
     public JCStatement writeStatement() {
-        String annotationType = AutoSerializableProcessor.getEgenAnnotationType(var);
+        String annotationType = AutoSerializableProcessor.getEgenAnnotationType(variableDecl);
         switch (annotationType) {
             case "Compact":
                 return compactWriteStatement();
@@ -46,7 +52,7 @@ public class StatementFactory {
             case "Ordinal":
                 return ordinalWriteStatement();
             default:
-                SerializationStrategyRecord strategyRecord = SerializationStrategyRecord.getByVariable(var);
+                SerializationStrategyRecord strategyRecord = SerializationStrategyRecord.getByVariable(variableDecl);
                 if (strategyRecord == null) {
                     return commonWriteStatement();
                 } else {
@@ -56,7 +62,7 @@ public class StatementFactory {
     }
 
     public JCStatement readStatement() {
-        String annotationType = AutoSerializableProcessor.getEgenAnnotationType(var);
+        String annotationType = AutoSerializableProcessor.getEgenAnnotationType(variableDecl);
         switch (annotationType) {
             case "Compact":
                 return compactReadStatement();
@@ -67,7 +73,7 @@ public class StatementFactory {
             case "Ordinal":
                 return ordinalReadStatement();
             default:
-                SerializationStrategyRecord strategyRecord = SerializationStrategyRecord.getByVariable(var);
+                SerializationStrategyRecord strategyRecord = SerializationStrategyRecord.getByVariable(variableDecl);
                 if (strategyRecord == null) {
                     return commonReadStatement();
                 } else {
@@ -77,13 +83,13 @@ public class StatementFactory {
     }
 
     public JCStatement inlineWriteStatement() {
-        JCExpression expression = ident(var.name.toString());
+        JCExpression expression = var;
 
         JCExpression condition = maker.Binary(Tag.NE, expression, maker.Literal(TypeTag.BOT, null));
 
         JCExpression writeExpression = maker.Select(expression, utils.getName("writeInline"));
         writeExpression = maker.Apply(List.<JCExpression>nil(), writeExpression,
-                List.of(ident("out"), ident(var.name.toString()), maker.Literal(true)));
+                List.of(ident("out"), var, maker.Literal(true)));
 
         JCExpression writeNullByte = maker.Select(ident("out"), utils.getName("writeByte"));
         writeNullByte = maker.Apply(List.<JCExpression>nil(), writeNullByte, List.of((JCExpression) maker.Literal(-1)));
@@ -102,17 +108,17 @@ public class StatementFactory {
 
         JCExpression condition = maker.Binary(Tag.NE, expression, maker.Literal(-1));
 
-        JCExpression expression1 = maker.Assign(ident(var.name.toString()),
-                maker.NewClass(null, List.<JCExpression>nil(), ident(var.vartype.toString()), List.<JCExpression>nil(), null));
+        JCExpression expression1 = maker.Assign(var,
+                maker.NewClass(null, List.<JCExpression>nil(), ident(variableDecl.vartype.toString()), List.<JCExpression>nil(), null));
 
-        JCExpression expression2 = ident(var.name.toString());
+        JCExpression expression2 = var;
         expression2 = maker.Select(expression2, utils.getName("readInline"));
         expression2 = maker.Apply(List.<JCExpression>nil(), expression2,
-                List.of((JCExpression) ident("in"), ident(var.name.toString())));
+                List.of(ident("in"), var));
 
         JCBlock block = maker.Block(0, List.of((JCStatement) maker.Exec(expression1), maker.Exec(expression2)));
 
-        JCExpression elseExpr = maker.Assign(ident(var.name.toString()), maker.Literal(TypeTag.BOT, null));
+        JCExpression elseExpr = maker.Assign(var, maker.Literal(TypeTag.BOT, null));
         return maker.If(condition, block, maker.Exec(elseExpr));
     }
 
@@ -125,7 +131,7 @@ public class StatementFactory {
         for (int i = 1; i < toTargetSelects.length; i++) {
             toTarget = maker.Select(toTarget, utils.getName(toTargetSelects[i]));
         }
-        JCExpression toTargetApply = maker.Apply(List.<JCExpression>nil(), toTarget, List.of((JCExpression)ident(var.name.toString())));
+        JCExpression toTargetApply = maker.Apply(List.<JCExpression>nil(), toTarget, List.of(var));
         expression = maker.Apply(List.<JCExpression>nil(), expression,
                 List.of(ident("out"), toTargetApply));
         return maker.Exec(expression);
@@ -140,13 +146,13 @@ public class StatementFactory {
         for (int i = 1; i < fromTargetSelects.length; i++) {
             fromTarget = maker.Select(fromTarget, utils.getName(fromTargetSelects[i]));
         }
-        expression = maker.Apply(List.<JCExpression>nil(), expression, List.of((JCExpression) ident("in")));
+        expression = maker.Apply(List.<JCExpression>nil(), expression, List.of(ident("in")));
         expression = maker.Apply(List.<JCExpression>nil(), fromTarget, List.of(expression));
-        return maker.Exec(maker.Assign(ident(var.name.toString()), expression));
+        return maker.Exec(maker.Assign(var, expression));
     }
 
     public JCStatement deltaWriteStatement() {
-        String typeName = var.vartype.toString();
+        String typeName = variableDecl.vartype.toString();
         switch (typeName) {
             case "int[]":
             case "long[]": {
@@ -155,7 +161,7 @@ public class StatementFactory {
                 JCExpression expression = makeEgenIOUtilsSelect();
                 expression = maker.Select(expression, utils.getName("writeDelta" + capitalizedElementName + "Array"));
                 expression = maker.Apply(List.<JCExpression>nil(), expression,
-                        List.of(ident("out"), (JCExpression) ident(var.name.toString())));
+                        List.of(ident("out"), var));
                 return maker.Exec(expression);
             }
             case "int":
@@ -165,7 +171,7 @@ public class StatementFactory {
                 JCExpression expression = makeEgenIOUtilsSelect();
                 expression = maker.Select(expression, utils.getName("writeDelta" + capitalizedElementName));
                 expression = maker.Apply(List.<JCExpression>nil(), expression,
-                        List.of(ident("out"), ident(var.name.toString()), varDeltaFrom(var)));
+                        List.of(ident("out"), var, varDeltaFrom(variableDecl)));
                 return maker.Exec(expression);
             }
             default:
@@ -174,7 +180,7 @@ public class StatementFactory {
     }
 
     public JCStatement deltaReadStatement() {
-        String typeName = var.vartype.toString();
+        String typeName = variableDecl.vartype.toString();
         switch (typeName) {
             case "int[]":
             case "long[]": {
@@ -182,8 +188,8 @@ public class StatementFactory {
                         typeName.substring(1, typeName.length() - 2);
                 JCExpression expression = makeEgenIOUtilsSelect();
                 expression = maker.Select(expression, utils.getName("readDelta" + capitalizedElementName + "Array"));
-                expression = maker.Apply(List.<JCExpression>nil(), expression, List.of((JCExpression) ident("in")));
-                return maker.Exec(maker.Assign(ident(var.name.toString()), expression));
+                expression = maker.Apply(List.<JCExpression>nil(), expression, List.of(ident("in")));
+                return maker.Exec(maker.Assign(var, expression));
             }
             case "int":
             case "long": {
@@ -191,8 +197,8 @@ public class StatementFactory {
                         typeName.substring(1, typeName.length());
                 JCExpression expression = makeEgenIOUtilsSelect();
                 expression = maker.Select(expression, utils.getName("readDelta" + capitalizedElementName));
-                expression = maker.Apply(List.<JCExpression>nil(), expression, List.of(ident("in"), varDeltaFrom(var)));
-                return maker.Exec(maker.Assign(ident(var.name.toString()), expression));
+                expression = maker.Apply(List.<JCExpression>nil(), expression, List.of(ident("in"), varDeltaFrom(variableDecl)));
+                return maker.Exec(maker.Assign(var, expression));
             }
             default:
                 return commonReadStatement();
@@ -200,7 +206,7 @@ public class StatementFactory {
     }
 
     public JCStatement compactWriteStatement() {
-        String typeName = var.vartype.toString();
+        String typeName = variableDecl.vartype.toString();
         switch (typeName) {
             case "int":
             case "long":
@@ -210,30 +216,30 @@ public class StatementFactory {
                 JCExpression expression = makeDxlibIOUtilsSelect();
                 expression = maker.Select(expression, utils.getName("writeCompact" + capitalizedTypeName));
                 expression = maker.Apply(List.<JCExpression>nil(), expression,
-                        List.of(ident("out"), (JCExpression) ident(var.name.toString())));
+                        List.of(ident("out"), var));
                 return maker.Exec(expression);
             }
             case "String": {
                 JCExpression expression = makeDxlibIOUtilsSelect();
                 expression = maker.Select(expression, utils.getName("writeUTFString"));
                 expression = maker.Apply(List.<JCExpression>nil(), expression,
-                        List.of(ident("out"), (JCExpression) ident(var.name.toString())));
+                        List.of(ident("out"), var));
                 return maker.Exec(expression);
             }
             default:
-                if (CompactConfiguration.isRecursiveInlineEnabled() && isInlineApplicable(var))
+                if (CompactConfiguration.isRecursiveInlineEnabled() && isInlineApplicable(variableDecl))
                     return inlineWriteStatement();
 
-                if (CompactConfiguration.isRecursiveOrdinalEnabled() && isOrdinalApplicable(var))
+                if (CompactConfiguration.isRecursiveOrdinalEnabled() && isOrdinalApplicable(variableDecl))
                     return ordinalWriteStatement();
 
-                if (isCollectionApplicable(var))
+                if (isCollectionApplicable(variableDecl))
                     return collectionWriteStatement();
 
-                if (isArrayApplicable(var))
+                if (isArrayApplicable(variableDecl))
                     return arrayWriteStatement();
 
-                if (isMapApplicable(var))
+                if (isMapApplicable(variableDecl))
                     return mapWriteStatement();
 
                 return commonWriteStatement();
@@ -241,7 +247,7 @@ public class StatementFactory {
     }
 
     public JCStatement compactReadStatement() {
-        String typeName = var.vartype.toString();
+        String typeName = variableDecl.vartype.toString();
         switch (typeName) {
             case "int":
             case "long":
@@ -250,29 +256,29 @@ public class StatementFactory {
                 String capitalizedTypeName = Character.toUpperCase(typeName.charAt(0)) + typeName.substring(1);
                 JCExpression expression = makeDxlibIOUtilsSelect();
                 expression = maker.Select(expression, utils.getName("readCompact" + capitalizedTypeName));
-                expression = maker.Apply(List.<JCExpression>nil(), expression, List.of((JCExpression) ident("in")));
-                return maker.Exec(maker.Assign(ident(var.name.toString()), expression));
+                expression = maker.Apply(List.<JCExpression>nil(), expression, List.of(ident("in")));
+                return maker.Exec(maker.Assign(var, expression));
             }
             case "String": {
                 JCExpression expression = makeDxlibIOUtilsSelect();
                 expression = maker.Select(expression, utils.getName("readUTFString"));
-                expression = maker.Apply(List.<JCExpression>nil(), expression, List.of((JCExpression) ident("in")));
-                return maker.Exec(maker.Assign(ident(var.name.toString()), expression));
+                expression = maker.Apply(List.<JCExpression>nil(), expression, List.of(ident("in")));
+                return maker.Exec(maker.Assign(var, expression));
             }
             default:
-                if (CompactConfiguration.isRecursiveInlineEnabled() && isInlineApplicable(var))
+                if (CompactConfiguration.isRecursiveInlineEnabled() && isInlineApplicable(variableDecl))
                     return inlineReadStatement();
 
-                if (CompactConfiguration.isRecursiveOrdinalEnabled() && isOrdinalApplicable(var))
+                if (CompactConfiguration.isRecursiveOrdinalEnabled() && isOrdinalApplicable(variableDecl))
                     return ordinalReadStatement();
 
-                if (isCollectionApplicable(var))
+                if (isCollectionApplicable(variableDecl))
                     return collectionReadStatement();
 
-                if (isArrayApplicable(var))
+                if (isArrayApplicable(variableDecl))
                     return arrayReadStatement();
 
-                if (isMapApplicable(var))
+                if (isMapApplicable(variableDecl))
                     return mapReadStatement();
 
                 return commonReadStatement();
@@ -282,7 +288,7 @@ public class StatementFactory {
     public JCStatement ordinalWriteStatement() {
         JCExpression notNullExpr = makeDxlibIOUtilsSelect();
         notNullExpr = maker.Select(notNullExpr, utils.getName("writeCompactInt"));
-        JCExpression select = maker.Select(ident(var.name.toString()), utils.getName("code"));
+        JCExpression select = maker.Select(var, utils.getName("code"));
         notNullExpr = maker.Apply(List.<JCExpression>nil(), notNullExpr,
                 List.of(ident("out"), maker.Apply(List.<JCExpression>nil(), select, List.<JCExpression>nil())));
 
@@ -290,81 +296,81 @@ public class StatementFactory {
         nullExpr = maker.Select(nullExpr, utils.getName("writeCompactInt"));
         nullExpr = maker.Apply(List.<JCExpression>nil(), nullExpr, List.of(ident("out"), maker.Literal(-1)));
 
-        JCExpression cond = maker.Binary(Tag.NE, ident(var.name.toString()), maker.Literal(TypeTag.BOT, null));
+        JCExpression cond = maker.Binary(Tag.NE, var, maker.Literal(TypeTag.BOT, null));
         return maker.If(cond, maker.Exec(notNullExpr), maker.Exec(nullExpr));
     }
 
     public JCStatement ordinalReadStatement() {
-        JCExpression classExpr = ident(var.vartype.toString());
+        JCExpression classExpr = ident(variableDecl.vartype.toString());
         classExpr = maker.Select(classExpr, utils.getName("class"));
 
         JCExpression readIntExpr = makeDxlibIOUtilsSelect();
         readIntExpr = maker.Select(readIntExpr, utils.getName("readCompactInt"));
-        readIntExpr = maker.Apply(List.<JCExpression>nil(), readIntExpr, List.of((JCExpression) ident("in")));
-        JCStatement intVarDef = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "ord"), maker.TypeIdent(TypeTag.INT), readIntExpr);
+        readIntExpr = maker.Apply(List.<JCExpression>nil(), readIntExpr, List.of(ident("in")));
+        JCStatement intVarDef = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "ord"), maker.TypeIdent(TypeTag.INT), readIntExpr);
 
-        JCExpression expression = ident(var.vartype.toString());
+        JCExpression expression = ident(variableDecl.vartype.toString());
         expression = maker.Select(expression, utils.getName("findByCode"));
-        expression = maker.Apply(List.<JCExpression>nil(), expression, List.of(classExpr, ident(var.name.toString() + "ord")));
+        expression = maker.Apply(List.<JCExpression>nil(), expression, List.of(classExpr, ident(variableDecl.name.toString() + "ord")));
 
-        JCBinary cond = maker.Binary(Tag.NE, ident(var.name.toString() + "ord"), maker.Literal(-1));
-        JCIf jcIf = maker.If(cond, maker.Exec(maker.Assign(ident(var.name.toString()), expression)), null);
+        JCBinary cond = maker.Binary(Tag.NE, ident(variableDecl.name.toString() + "ord"), maker.Literal(-1));
+        JCIf jcIf = maker.If(cond, maker.Exec(maker.Assign(var, expression)), null);
 
         return maker.Block(0, List.of(intVarDef, jcIf));
     }
 
     public JCStatement commonWriteStatement() {
-        String typeName = var.vartype.toString();
+        String typeName = variableDecl.vartype.toString();
         if (isPrimitive(typeName)) {
             String capitalizedTypeName = Character.toUpperCase(typeName.charAt(0)) + typeName.substring(1);
             JCExpression expression = ident("out");
             expression = maker.Select(expression, utils.getName("write" + capitalizedTypeName));
             expression = maker.Apply(List.<JCExpression>nil(), expression,
-                    List.of((JCExpression) ident(var.name.toString())));
+                    List.of(var));
             return maker.Exec(expression);
         } else {
             JCExpression expression = ident("out");
             expression = maker.Select(expression, utils.getName("writeObject"));
             expression = maker.Apply(List.<JCExpression>nil(), expression,
-                    List.of((JCExpression) ident(var.name.toString())));
+                    List.of(var));
             return maker.Exec(expression);
         }
     }
 
     public JCStatement commonReadStatement() {
-        String typeName = var.vartype.toString();
+        String typeName = variableDecl.vartype.toString();
         if (isPrimitive(typeName)) {
             String capitalizedTypeName = Character.toUpperCase(typeName.charAt(0)) + typeName.substring(1);
             JCExpression expression = ident("in");
             expression = maker.Select(expression, utils.getName("read" + capitalizedTypeName));
             expression = maker.Apply(List.<JCExpression>nil(), expression, List.<JCExpression>nil());
-            return maker.Exec(maker.Assign(ident(var.name.toString()), expression));
+            return maker.Exec(maker.Assign(var, expression));
         } else {
             JCExpression expression = ident("in");
             expression = maker.Select(expression, utils.getName("readObject"));
             expression = maker.Apply(List.<JCExpression>nil(), expression, List.<JCExpression>nil());
-            return maker.Exec(maker.Assign(ident(var.name.toString()), maker.TypeCast(var.vartype, expression)));
+            return maker.Exec(maker.Assign(var, maker.TypeCast(variableDecl.vartype, expression)));
         }
     }
 
     public JCStatement collectionWriteStatement() {
         JCExpression expression1 = makeDxlibIOUtilsSelect();
         expression1 = maker.Select(expression1, utils.getName("writeCompactInt"));
-        JCExpression select = maker.Select(ident(var.name.toString()), utils.getName("size"));
+        JCExpression select = maker.Select(var, utils.getName("size"));
         expression1 = maker.Apply(List.<JCExpression>nil(), expression1,
                 List.of(ident("out"), maker.Apply(List.<JCExpression>nil(), select, List.<JCExpression>nil())));
         JCStatement statement1 = maker.Exec(expression1);
 
-        JCVariableDecl forEachLoopVar = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "elem"),
-                ((JCTypeApply) var.vartype).arguments.get(0), null);
-        JCStatement statement2 = maker.ForeachLoop(forEachLoopVar, ident(var.name.toString()),
-                maker.Block(0, List.of(new StatementFactory(maker, utils, forEachLoopVar).compactWriteStatement())));
+        JCVariableDecl forEachLoopVar = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "elem"),
+                ((JCTypeApply) variableDecl.vartype).arguments.get(0), null);
+        JCStatement statement2 = maker.ForeachLoop(forEachLoopVar, var,
+                maker.Block(0, List.of(new StatementFactory(maker, utils, forEachLoopVar, true).compactWriteStatement())));
 
         JCExpression writeMinusOne = makeDxlibIOUtilsSelect();
         writeMinusOne = maker.Select(writeMinusOne, utils.getName("writeCompactInt"));
         writeMinusOne = maker.Apply(List.<JCExpression>nil(), writeMinusOne,
                 List.of(ident("out"), maker.Literal(-1)));
-        JCBinary binary = maker.Binary(Tag.NE, ident(var.name.toString()), maker.Literal(TypeTag.BOT, null));
+        JCBinary binary = maker.Binary(Tag.NE, var, maker.Literal(TypeTag.BOT, null));
         return maker.If(binary, maker.Block(0, List.of(statement1, statement2)), maker.Block(0, List.of((JCStatement) maker.Exec(writeMinusOne))));
     }
 
@@ -374,27 +380,27 @@ public class StatementFactory {
     public JCStatement arrayWriteStatement() {
         JCExpression expression1 = makeDxlibIOUtilsSelect();
         expression1 = maker.Select(expression1, utils.getName("writeCompactInt"));
-        JCExpression select = maker.Select(ident(var.name.toString()), utils.getName("length"));
+        JCExpression select = maker.Select(var, utils.getName("length"));
         expression1 = maker.Apply(List.<JCExpression>nil(), expression1, List.of(ident("out"), select));
         JCStatement statement1 = maker.Exec(expression1);
 
-        JCVariableDecl forEachLoopVar = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "elem"),
-                ((JCArrayTypeTree)var.vartype).elemtype, null);
-        JCStatement statement2 = maker.ForeachLoop(forEachLoopVar, ident(var.name.toString()),
-                maker.Block(0, List.of(new StatementFactory(maker, utils, forEachLoopVar).compactWriteStatement())));
+        JCVariableDecl forEachLoopVar = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "elem"),
+                ((JCArrayTypeTree) variableDecl.vartype).elemtype, null);
+        JCStatement statement2 = maker.ForeachLoop(forEachLoopVar, var,
+                maker.Block(0, List.of(new StatementFactory(maker, utils, forEachLoopVar, true).compactWriteStatement())));
 
         JCExpression writeMinusOne = makeDxlibIOUtilsSelect();
         writeMinusOne = maker.Select(writeMinusOne, utils.getName("writeCompactInt"));
         writeMinusOne = maker.Apply(List.<JCExpression>nil(), writeMinusOne,
                 List.of(ident("out"), maker.Literal(-1)));
-        JCBinary binary = maker.Binary(Tag.NE, ident(var.name.toString()), maker.Literal(TypeTag.BOT, null));
+        JCBinary binary = maker.Binary(Tag.NE, var, maker.Literal(TypeTag.BOT, null));
         return maker.If(binary, maker.Block(0, List.of(statement1, statement2)), maker.Block(0, List.of((JCStatement) maker.Exec(writeMinusOne))));
     }
 
     public JCStatement mapWriteStatement() {
         JCExpression expression1 = makeDxlibIOUtilsSelect();
         expression1 = maker.Select(expression1, utils.getName("writeCompactInt"));
-        JCExpression select = maker.Select(ident(var.name.toString()), utils.getName("size"));
+        JCExpression select = maker.Select(var, utils.getName("size"));
         expression1 = maker.Apply(List.<JCExpression>nil(), expression1,
                 List.of(ident("out"), maker.Apply(List.<JCExpression>nil(), select, List.<JCExpression>nil())));
         JCStatement statement1 = maker.Exec(expression1);
@@ -403,23 +409,23 @@ public class StatementFactory {
         mapEntryType = maker.Select(mapEntryType, utils.getName("util"));
         mapEntryType = maker.Select(mapEntryType, utils.getName("Map"));
         mapEntryType = maker.Select(mapEntryType, utils.getName("Entry"));
-        mapEntryType = maker.TypeApply(mapEntryType, ((JCTypeApply) var.vartype).arguments);
-        JCVariableDecl forEachLoopVar = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "entry"), mapEntryType, null);
+        mapEntryType = maker.TypeApply(mapEntryType, ((JCTypeApply) variableDecl.vartype).arguments);
+        JCVariableDecl forEachLoopVar = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "entry"), mapEntryType, null);
 
         JCExpression apply21 = maker.Select(ident(forEachLoopVar.name.toString()), utils.getName("getKey"));
         apply21 = maker.Apply(List.<JCExpression>nil(), apply21, List.<JCExpression>nil());
-        JCVariableDecl statement21 = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "key"), ((JCTypeApply) var.vartype).arguments.get(0), apply21);
+        JCVariableDecl statement21 = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "key"), ((JCTypeApply) variableDecl.vartype).arguments.get(0), apply21);
 
         JCExpression apply22 = maker.Select(ident(forEachLoopVar.name.toString()), utils.getName("getValue"));
         apply22 = maker.Apply(List.<JCExpression>nil(), apply22, List.<JCExpression>nil());
-        JCVariableDecl statement22 = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "value"), ((JCTypeApply) var.vartype).arguments.get(1), apply22);
+        JCVariableDecl statement22 = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "value"), ((JCTypeApply) variableDecl.vartype).arguments.get(1), apply22);
 
-        JCStatement write23 = new StatementFactory(maker, utils, statement21).compactWriteStatement();
+        JCStatement write23 = new StatementFactory(maker, utils, statement21, true).compactWriteStatement();
 
-        JCStatement write24 = new StatementFactory(maker, utils, statement22).compactWriteStatement();
+        JCStatement write24 = new StatementFactory(maker, utils, statement22, true).compactWriteStatement();
 
         JCExpression entrySetExpr = maker.Apply(List.<JCExpression>nil(),
-                maker.Select(ident(var.name.toString()), utils.getName("entrySet")), List.<JCExpression>nil());
+                maker.Select(var, utils.getName("entrySet")), List.<JCExpression>nil());
         JCStatement statement2 = maker.ForeachLoop(forEachLoopVar, entrySetExpr,
                 maker.Block(0, List.of(statement21, statement22, write23, write24)));
 
@@ -427,35 +433,35 @@ public class StatementFactory {
         writeMinusOne = maker.Select(writeMinusOne, utils.getName("writeCompactInt"));
         writeMinusOne = maker.Apply(List.<JCExpression>nil(), writeMinusOne,
                 List.of(ident("out"), maker.Literal(-1)));
-        JCBinary binary = maker.Binary(Tag.NE, ident(var.name.toString()), maker.Literal(TypeTag.BOT, null));
+        JCBinary binary = maker.Binary(Tag.NE, var, maker.Literal(TypeTag.BOT, null));
         return maker.If(binary, maker.Block(0, List.of(statement1, statement2)), maker.Block(0, List.of((JCStatement) maker.Exec(writeMinusOne))));
     }
 
     public JCStatement collectionReadStatement() {
         JCExpression expression1 = makeDxlibIOUtilsSelect();
         expression1 = maker.Select(expression1, utils.getName("readCompactInt"));
-        expression1 = maker.Apply(List.<JCExpression>nil(), expression1, List.of((JCExpression) ident("in")));
-        JCVariableDecl statement1 = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "size"), maker.TypeIdent(TypeTag.INT), expression1);
+        expression1 = maker.Apply(List.<JCExpression>nil(), expression1, List.of(ident("in")));
+        JCVariableDecl statement1 = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "size"), maker.TypeIdent(TypeTag.INT), expression1);
 
-        JCTypeApply typeApply = (JCTypeApply) (var.vartype);
-        JCExpression expression2 = maker.Assign(ident(var.name.toString()),
+        JCTypeApply typeApply = (JCTypeApply) (variableDecl.vartype);
+        JCExpression expression2 = maker.Assign(var,
                 maker.NewClass(null, List.<JCExpression>nil(), maker.TypeApply(typeApply.clazz, List.<JCExpression>nil()), List.<JCExpression>nil(), null));
         JCStatement statement2 = maker.Exec(expression2);
 
-        JCVariableDecl statement31 = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "elem"), typeApply.arguments.get(0), maker.Literal(TypeTag.BOT, null));
+        JCVariableDecl statement31 = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "elem"), typeApply.arguments.get(0), maker.Literal(TypeTag.BOT, null));
 
-        JCStatement statement32 = new StatementFactory(maker, utils, statement31).compactReadStatement();
+        JCStatement statement32 = new StatementFactory(maker, utils, statement31, true).compactReadStatement();
 
-        JCExpression select33 = maker.Select(ident(var.name.toString()), utils.getName("add"));
+        JCExpression select33 = maker.Select(var, utils.getName("add"));
         JCStatement statement33 = maker.Exec(maker.Apply(List.<JCExpression>nil(), select33,
-                List.of((JCExpression) ident(statement31.name.toString()))));
+                List.of(ident(statement31.name.toString()))));
 
-        JCStatement init = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "index"), maker.TypeIdent(TypeTag.INT), maker.Literal(0));
-        JCExpression cond = maker.Binary(Tag.LT, ident(var.name.toString() + "index"), ident(var.name.toString() + "size"));
-        JCExpressionStatement step = maker.Exec(maker.Unary(Tag.POSTINC, ident(var.name.toString() + "index")));
+        JCStatement init = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "index"), maker.TypeIdent(TypeTag.INT), maker.Literal(0));
+        JCExpression cond = maker.Binary(Tag.LT, ident(variableDecl.name.toString() + "index"), ident(variableDecl.name.toString() + "size"));
+        JCExpressionStatement step = maker.Exec(maker.Unary(Tag.POSTINC, ident(variableDecl.name.toString() + "index")));
         JCStatement statement3 = maker.ForLoop(List.of(init), cond, List.of(step), maker.Block(0, List.of(statement31, statement32, statement33)));
 
-        JCBinary binary = maker.Binary(Tag.NE, ident(var.name.toString() + "size"), maker.Literal(-1));
+        JCBinary binary = maker.Binary(Tag.NE, ident(variableDecl.name.toString() + "size"), maker.Literal(-1));
         return maker.Block(0, List.of(statement1, maker.If(binary, maker.Block(0, List.of(statement2, statement3)), null)));
     }
 
@@ -465,59 +471,59 @@ public class StatementFactory {
     public JCStatement arrayReadStatement() {
         JCExpression expression1 = makeDxlibIOUtilsSelect();
         expression1 = maker.Select(expression1, utils.getName("readCompactInt"));
-        expression1 = maker.Apply(List.<JCExpression>nil(), expression1, List.of((JCExpression) ident("in")));
-        JCVariableDecl statement1 = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "size"), maker.TypeIdent(TypeTag.INT), expression1);
+        expression1 = maker.Apply(List.<JCExpression>nil(), expression1, List.of(ident("in")));
+        JCVariableDecl statement1 = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "size"), maker.TypeIdent(TypeTag.INT), expression1);
 
-        JCArrayTypeTree arrayTypeTree = (JCArrayTypeTree) (var.vartype);
-        JCExpression expression2 = maker.Assign(ident(var.name.toString()),
-                maker.NewArray(arrayTypeTree.elemtype, List.of((JCExpression) ident(var.name.toString() + "size")), null));
+        JCArrayTypeTree arrayTypeTree = (JCArrayTypeTree) (variableDecl.vartype);
+        JCExpression expression2 = maker.Assign(var,
+                maker.NewArray(arrayTypeTree.elemtype, List.of(ident(variableDecl.name.toString() + "size")), null));
         JCStatement statement2 = maker.Exec(expression2);
 
-        JCVariableDecl statement31 = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "elem"), arrayTypeTree.elemtype, null);
+        JCVariableDecl statement31 = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "elem"), arrayTypeTree.elemtype, null);
 
-        JCStatement statement32 = new StatementFactory(maker, utils, statement31).compactReadStatement();
+        JCStatement statement32 = new StatementFactory(maker, utils, statement31, true).compactReadStatement();
 
-        JCStatement statement33 = maker.Exec(maker.Assign(maker.Indexed(ident(var.name.toString()),
-                ident(var.name.toString() + "index")), ident(var.name.toString() + "elem")));
+        JCStatement statement33 = maker.Exec(maker.Assign(maker.Indexed(var,
+                ident(variableDecl.name.toString() + "index")), ident(variableDecl.name.toString() + "elem")));
 
-        JCStatement init = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "index"), maker.TypeIdent(TypeTag.INT), maker.Literal(0));
-        JCExpression cond = maker.Binary(Tag.LT, ident(var.name.toString() + "index"), ident(var.name.toString() + "size"));
-        JCExpressionStatement step = maker.Exec(maker.Unary(Tag.POSTINC, ident(var.name.toString() + "index")));
+        JCStatement init = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "index"), maker.TypeIdent(TypeTag.INT), maker.Literal(0));
+        JCExpression cond = maker.Binary(Tag.LT, ident(variableDecl.name.toString() + "index"), ident(variableDecl.name.toString() + "size"));
+        JCExpressionStatement step = maker.Exec(maker.Unary(Tag.POSTINC, ident(variableDecl.name.toString() + "index")));
         JCStatement statement3 = maker.ForLoop(List.of(init), cond, List.of(step), maker.Block(0, List.of(statement31, statement32, statement33)));
 
-        JCBinary binary = maker.Binary(Tag.NE, ident(var.name.toString() + "size"), maker.Literal(-1));
+        JCBinary binary = maker.Binary(Tag.NE, ident(variableDecl.name.toString() + "size"), maker.Literal(-1));
         return maker.Block(0, List.of(statement1, maker.If(binary, maker.Block(0, List.of(statement2, statement3)), null)));
     }
 
     public JCStatement mapReadStatement() {
         JCExpression expression1 = makeDxlibIOUtilsSelect();
         expression1 = maker.Select(expression1, utils.getName("readCompactInt"));
-        expression1 = maker.Apply(List.<JCExpression>nil(), expression1, List.of((JCExpression) ident("in")));
-        JCVariableDecl statement1 = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "size"), maker.TypeIdent(TypeTag.INT), expression1);
+        expression1 = maker.Apply(List.<JCExpression>nil(), expression1, List.of(ident("in")));
+        JCVariableDecl statement1 = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "size"), maker.TypeIdent(TypeTag.INT), expression1);
 
-        JCTypeApply typeApply = (JCTypeApply) (var.vartype);
-        JCExpression expression2 = maker.Assign(ident(var.name.toString()),
+        JCTypeApply typeApply = (JCTypeApply) (variableDecl.vartype);
+        JCExpression expression2 = maker.Assign(var,
                 maker.NewClass(null, List.<JCExpression>nil(), maker.TypeApply(typeApply.clazz, List.<JCExpression>nil()), List.<JCExpression>nil(), null));
         JCStatement statement2 = maker.Exec(expression2);
 
-        JCVariableDecl statement31 = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "key"), typeApply.arguments.get(0), maker.Literal(TypeTag.BOT, null));
+        JCVariableDecl statement31 = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "key"), typeApply.arguments.get(0), maker.Literal(TypeTag.BOT, null));
 
-        JCStatement statement32 = new StatementFactory(maker, utils, statement31).compactReadStatement();
+        JCStatement statement32 = new StatementFactory(maker, utils, statement31, true).compactReadStatement();
 
-        JCVariableDecl statement33 = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "value"), typeApply.arguments.get(1), maker.Literal(TypeTag.BOT, null));
+        JCVariableDecl statement33 = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "value"), typeApply.arguments.get(1), maker.Literal(TypeTag.BOT, null));
 
-        JCStatement statement34 = new StatementFactory(maker, utils, statement33).compactReadStatement();
+        JCStatement statement34 = new StatementFactory(maker, utils, statement33, true).compactReadStatement();
 
-        JCExpression select35 = maker.Select(ident(var.name.toString()), utils.getName("put"));
+        JCExpression select35 = maker.Select(var, utils.getName("put"));
         JCStatement statement35 = maker.Exec(maker.Apply(List.<JCExpression>nil(), select35,
-                List.of((JCExpression) ident(statement31.name.toString()), ident(statement33.name.toString()))));
+                List.of(ident(statement31.name.toString()), ident(statement33.name.toString()))));
 
-        JCStatement init = maker.VarDef(maker.Modifiers(0), utils.getName(var.name.toString() + "index"), maker.TypeIdent(TypeTag.INT), maker.Literal(0));
-        JCExpression cond = maker.Binary(Tag.LT, ident(var.name.toString() + "index"), ident(var.name.toString() + "size"));
-        JCExpressionStatement step = maker.Exec(maker.Unary(Tag.POSTINC, ident(var.name.toString() + "index")));
+        JCStatement init = maker.VarDef(maker.Modifiers(0), utils.getName(variableDecl.name.toString() + "index"), maker.TypeIdent(TypeTag.INT), maker.Literal(0));
+        JCExpression cond = maker.Binary(Tag.LT, ident(variableDecl.name.toString() + "index"), ident(variableDecl.name.toString() + "size"));
+        JCExpressionStatement step = maker.Exec(maker.Unary(Tag.POSTINC, ident(variableDecl.name.toString() + "index")));
         JCStatement statement3 = maker.ForLoop(List.of(init), cond, List.of(step), maker.Block(0, List.of(statement31, statement32, statement33, statement34, statement35)));
 
-        JCBinary binary = maker.Binary(Tag.NE, ident(var.name.toString() + "size"), maker.Literal(-1));
+        JCBinary binary = maker.Binary(Tag.NE, ident(variableDecl.name.toString() + "size"), maker.Literal(-1));
         return maker.Block(0, List.of(statement1, maker.If(binary, maker.Block(0, List.of(statement2, statement3)), null)));
     }
 
@@ -619,7 +625,7 @@ public class StatementFactory {
         }
 
         if (value.matches("[a-zA-Z].*")) {
-            return maker.Apply(List.<JCExpression>nil(), resultExpr, List.of((JCExpression) ident(value)));
+            return maker.Apply(List.<JCExpression>nil(), resultExpr, List.of(ident("self." + value)));
         } else {
             return maker.Apply(List.<JCExpression>nil(), resultExpr, List.of((JCExpression) maker.Literal(value)));
         }

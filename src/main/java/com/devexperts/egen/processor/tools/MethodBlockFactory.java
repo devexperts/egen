@@ -4,7 +4,7 @@ package com.devexperts.egen.processor.tools;
  * #%L
  * EGEN - Externalizable implementation generator
  * %%
- * Copyright (C) 2014 - 2015 Devexperts, LLC
+ * Copyright (C) 2014 - 2020 Devexperts, LLC
  * %%
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -40,12 +40,12 @@ public class MethodBlockFactory {
         java.util.List<java.util.List<JCVariableDecl>> fieldGroups = fieldGrouper.getFieldGroups();
 
         if (!fieldGroups.isEmpty()) {
-            JCExpression flagsInit = maker.Apply(List.<JCExpression>nil(), ident("prepareFlags"), List.<JCExpression>nil());
+            JCExpression flagsInit = maker.Apply(List.<JCExpression>nil(), ident("prepareFlags"), List.of((JCExpression) ident("self")));
 
             JCStatement flagsDef = maker.VarDef(maker.Modifiers(0), utils.getName("flags"), maker.TypeIdent(TypeTag.LONG), flagsInit);
             statements = statements.append(flagsDef);
 
-            statements = statements.append(new StatementFactory(maker, utils, (JCVariableDecl) flagsDef).compactWriteStatement());
+            statements = statements.append(new StatementFactory(maker, utils, (JCVariableDecl) flagsDef, true).compactWriteStatement());
         }
 
 
@@ -111,7 +111,7 @@ public class MethodBlockFactory {
     public JCBlock writeObjectBlock() {
         List<JCStatement> statements = List.nil();
         JCExpression expression = maker.Apply(List.<JCExpression>nil(), ident("writeContents"),
-                List.of((JCExpression) ident("out")));
+                List.of(ident("out"), ident("this")));
         statements = statements.append(maker.Exec(expression));
         return maker.Block(0, statements);
     }
@@ -119,7 +119,7 @@ public class MethodBlockFactory {
     public JCBlock readObjectBlock() {
         List<JCStatement> statements = List.nil();
         JCExpression expression = maker.Apply(List.<JCExpression>nil(), ident("readContents"),
-                List.of((JCExpression) ident("in")));
+                List.of(ident("in"), ident("this")));
         statements = statements.append(maker.Exec(expression));
         return maker.Block(0, statements);
     }
@@ -142,7 +142,7 @@ public class MethodBlockFactory {
         statements = statements.append(classCheck);
 
         JCStatement writeContentsCall = maker.Exec(maker.Apply(List.<JCExpression>nil(),
-                makeSelectExpr("self.writeContents"), List.of((JCExpression) ident("out"))));
+                makeSelectExpr("writeContents"), List.of(ident("out"), ident("self"))));
         statements = statements.append(writeContentsCall);
 
         if (classDecl.extending != null) {
@@ -160,7 +160,7 @@ public class MethodBlockFactory {
         List<JCStatement> statements = List.nil();
 
         JCStatement readContentsCall = maker.Exec(maker.Apply(List.<JCExpression>nil(),
-                makeSelectExpr("self.readContents"), List.of((JCExpression) ident("in"))));
+                makeSelectExpr("readContents"), List.of(ident("in"), ident("self"))));
         statements = statements.append(readContentsCall);
 
         if (classDecl.extending != null) {

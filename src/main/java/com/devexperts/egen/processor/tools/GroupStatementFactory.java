@@ -4,7 +4,7 @@ package com.devexperts.egen.processor.tools;
  * #%L
  * EGEN - Externalizable implementation generator
  * %%
- * Copyright (C) 2014 - 2015 Devexperts, LLC
+ * Copyright (C) 2014 - 2020 Devexperts, LLC
  * %%
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -49,8 +49,13 @@ public class GroupStatementFactory {
                 maker.Block(0, defaultReadStatements(fieldGroup)));
     }
 
-    private JCIdent ident(String name) {
-        return maker.Ident(utils.getName(name));
+    private JCExpression ident(String complexIdent) {
+        String[] parts = complexIdent.split("\\.");
+        JCExpression expression = maker.Ident(utils.getName(parts[0]));
+        for (int i = 1; i < parts.length; i++) {
+            expression = maker.Select(expression, utils.getName(parts[i]));
+        }
+        return expression;
     }
 
     private JCExpression flagsCheckCond(int groupOrdinal) {
@@ -68,12 +73,12 @@ public class GroupStatementFactory {
     private List<JCStatement> writeStatements(java.util.List<JCTree.JCVariableDecl> vars) {
         List<JCStatement> result = List.nil();
         for (JCVariableDecl var : vars) {
-//            String typeIdentString = Character.toUpperCase(var.vartype.toString().charAt(0)) +
-//                    var.vartype.toString().substring(1);
+//            String typeIdentString = Character.toUpperCase(variableDecl.vartype.toString().charAt(0)) +
+//                    variableDecl.vartype.toString().substring(1);
 //            JCExpression expression = ident("out");
 //            expression = maker.Select(expression, utils.getName("write" + typeIdentString));
 //            expression = maker.Apply(List.<JCExpression>nil(), expression,
-//                    List.of((JCExpression) ident(var.name.toString())));
+//                    List.of((JCExpression) ident(variableDecl.name.toString())));
             result = result.append(new StatementFactory(maker, utils, var).compactWriteStatement());
         }
         return result;
@@ -83,7 +88,7 @@ public class GroupStatementFactory {
         List<JCStatement> result = List.nil();
         for (JCVariableDecl var : vars) {
             JCExpression expression = varDefaultValue(var);
-            expression = maker.Assign(ident(var.name.toString()), expression);
+            expression = maker.Assign(ident("self." + var.name.toString()), expression);
             result = result.append(maker.Exec(expression));
         }
         return result;
@@ -92,12 +97,12 @@ public class GroupStatementFactory {
     private List<JCStatement> readStatements(java.util.List<JCTree.JCVariableDecl> vars) {
         List<JCStatement> result = List.nil();
         for (JCVariableDecl var : vars) {
-//            String typeIdentString = Character.toUpperCase(var.vartype.toString().charAt(0)) +
-//                    var.vartype.toString().substring(1);
+//            String typeIdentString = Character.toUpperCase(variableDecl.vartype.toString().charAt(0)) +
+//                    variableDecl.vartype.toString().substring(1);
 //            JCExpression expression = ident("in");
 //            expression = maker.Select(expression, utils.getName("read" + typeIdentString));
 //            expression = maker.Apply(List.<JCExpression>nil(), expression, List.<JCExpression>nil());
-//            expression = maker.Assign(ident(var.name.toString()), expression);
+//            expression = maker.Assign(ident(variableDecl.name.toString()), expression);
             result = result.append(new StatementFactory(maker, utils, var).compactReadStatement());
         }
         return result;
@@ -108,7 +113,7 @@ public class GroupStatementFactory {
         int size = vars.size();
         String varName = var.name.toString();
         if (vars.size() == 1) {
-            return maker.Binary(Tag.NE, ident(varName), varDefaultValue(var));
+            return maker.Binary(Tag.NE, ident("self." + varName), varDefaultValue(var));
         } else {
             return maker.Binary(Tag.OR, groupDefaultCheckCond(vars.subList(0, size - 1)),
                     groupDefaultCheckCond(Collections.singletonList(vars.get(size - 1))));
